@@ -1,34 +1,50 @@
 #!/bin/bash
 set -e
 
-SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-BASE_DIR="$SCRIPT_DIR"
-SERVER_DIR="$BASE_DIR/auth"
+SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
+BASE_DIR=$SCRIPT_DIR
+SERVER_DIR=$BASE_DIR/auth
 
 set_server() {
   [ -f "$SERVER_DIR/$1.sh" ] || return 1
   . "$SERVER_DIR/$1.sh"
 }
 
-case "$1" in
-set)
-  shift
-  if set_server "$1"; then
-    basename "$(realpath "$SERVER_DIR/$1.sh")" .sh > "$SERVER_DIR/current"
-  fi
-  ;&
-i)
-  cat "$SERVER_DIR/current"
-  exit
-esac
+show_current() {
+  cat "$SERVER_DIR/current" 2>/dev/null
+}
 
-ENV_AUTH="$AUTH"
-ENV_PORT="$PORT"
+handle_meta_commands() {
+  case $1 in
+  ls)
+    find "$SERVER_DIR" -name '*.sh' ! -type l |
+      xargs -d'\n' basename -s .sh |
+      awk '{ print "'"$(show_current)"'" == $0 ? "*" : " ", $0 }'
+    ;;
+  set)
+    shift
+    if set_server "$1"; then
+      basename "$(realpath "$SERVER_DIR/$1.sh")" .sh > "$SERVER_DIR/current"
+    fi
+    ;&
+  i)
+    show_current
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
 
-set_server "$(cat "$SERVER_DIR/current" 2>/dev/null)"
+handle_meta_commands "$@" && exit
 
-[ -n "$ENV_AUTH" ] && AUTH="$ENV_AUTH"
-[ -n "$ENV_PORT" ] && PORT="$ENV_PORT"
+ENV_AUTH=$AUTH
+ENV_PORT=$PORT
+
+set_server "$(show_current)"
+
+[ -n "$ENV_AUTH" ] && AUTH=$ENV_AUTH
+[ -n "$ENV_PORT" ] && PORT=$ENV_PORT
 
 [ -z "$PORT" ] && PORT=22
 [ -z "$SSH" ] && SSH=ssh
@@ -44,7 +60,7 @@ fi
 
 [ -x "$(command -v pv)" ] && PV=pv || PV=cat
 
-case "$1" in
+case $1 in
 push)
   shift
 	tar zc "$@" | $PV | $SSH -p $PORT $AUTH -- tar zx --no-same-owner
