@@ -42,16 +42,18 @@ fi
 
 [ -z "$SSH_LOGIN" ] && SSH_LOGIN="$SSH -t"
 
+[ -x "$(command -v pv)" ] && PV=pv || PV=cat
+
 case "$1" in
 push)
   shift
-	tar zcf - "$@" | $SSH -p $PORT $AUTH -- tar zxf -
+	tar zc "$@" | $PV | $SSH -p $PORT $AUTH -- tar zx --no-same-owner
   ;;
 pull)
   shift
   # Note that tokens in $@ will be split anyway, because ssh passes arguments as
   # a single string to the remote shell.
-  $SSH -p $PORT $AUTH -- tar zcf - $@ | tar zxf -
+  $SSH -p $PORT $AUTH -- tar zc $@ | $PV | tar zx
   ;;
 put)
   shift
@@ -62,8 +64,7 @@ get)
   $SCP -r -P $PORT "${@/#/$AUTH:}" .
   ;;
 init)
-  cd "$BASE_DIR/config"
-	tar zcf - .??* | $SSH -p $PORT $AUTH -- tar zxf -
+  < "$BASE_DIR/config/pack.tar.xz" $PV | $SSH -p $PORT $AUTH -- tar Jx --no-same-owner
   ;;
 a|'')
   $SSH_LOGIN -p $PORT $AUTH -- tmux -u $1
