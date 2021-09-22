@@ -32,7 +32,6 @@ handle_meta_commands() {
     ;;
   *)
     return 1
-    ;;
   esac
 }
 
@@ -60,32 +59,36 @@ fi
 
 [ -x "$(command -v pv)" ] && PV=pv || PV=cat
 
-case $1 in
+case ${1-} in a|'')
+  $SSH_LOGIN -p $PORT $AUTH -- tmux -u "$@"
+  exit
+esac
+
+COMM=$1
+shift
+
+case $COMM in
 push)
-  shift
 	tar zc "$@" | $PV | $SSH -p $PORT $AUTH -- tar zx --no-same-owner
   ;;
 pull)
-  shift
   # Note that tokens in $@ will be split anyway, because ssh passes arguments as
   # a single string to the remote shell.
   $SSH -p $PORT $AUTH -- tar zc $@ | $PV | tar zx
   ;;
 put)
-  shift
   $SCP -r -P $PORT "$@" $AUTH:
   ;;
 get)
-  shift
   $SCP -r -P $PORT "${@/#/$AUTH:}" .
   ;;
 init)
   < "$BASE_DIR/config/pack.tar.xz" $PV | $SSH -p $PORT $AUTH -- tar Jx --no-same-owner
   ;;
-a|'')
-  $SSH_LOGIN -p $PORT $AUTH -- tmux -u $1
-  ;;
-*)
+e)
   $SSH -p $PORT $AUTH "$@"
   ;;
+*)
+  echo "unrecognized command \`$COMM\`"
+  exit 1
 esac
