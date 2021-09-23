@@ -91,11 +91,11 @@ pull)
   $SSH -p $PORT $AUTH -- "$(printf '%q ' tar zc "$@")" | $PV | tar zx
   ;;
 put)
-  $SCP -r -P $PORT "$@" $AUTH:
+  $SCP -r -p "$@" scp://$AUTH:$PORT/
   ;;
 get)
-  eval "set -- $(env printf "$AUTH:%q\0" "$@" | xargs -0 printf '%q ')"
-  $SCP -r -P $PORT "$@" .
+  eval "set -- $(env printf "scp://$AUTH:$PORT/%q\0" "$@" | xargs -0 printf '%q ')"
+  $SCP -r -p "$@" .
   ;;
 init)
   < "$BASE_DIR/config/pack.tar.xz" $PV | $SSH -p $PORT $AUTH -- tar Jx --no-same-owner
