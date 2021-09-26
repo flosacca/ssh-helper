@@ -95,8 +95,11 @@ main() {
           uses_scp=true
           continue
           ;;
-        /*)
+        */?*)
           uses_scp=true
+          ;;
+        *)
+          [ -L "$arg" ] && uses_scp=true
           ;;
       esac
     fi
