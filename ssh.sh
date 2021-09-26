@@ -5,14 +5,6 @@ SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 BASE_DIR=$SCRIPT_DIR
 SERVER_DIR=$BASE_DIR/auth
 
-cond() {
-  if eval "$1" >/dev/null 2>&1; then
-    echo "$2"
-  else
-    echo "$3"
-  fi
-}
-
 set_server() {
   [ -f "$SERVER_DIR/$1.sh" ] || return 1
   . "$SERVER_DIR/$1.sh"
@@ -72,7 +64,8 @@ init_env() {
 
   [ -z "$SSH_LOGIN" ] && SSH_LOGIN="$SSH -t"
 
-  PV=$(cond 'command -v pv' pv cat)
+  PV=pv
+  command -v $PV >/dev/null 2>&1 || PV=cat
 }
 
 main() {
