@@ -76,28 +76,33 @@ main() {
 
   local comm=$1
   shift
-  local uses_scp=false opt=true arg
+  local uses_scp prefers_scp=false parsing=true arg
   for arg; do
     shift
-    if $opt; then
+    if $parsing; then
       case $arg in
         --)
-          opt=false
+          parsing=false
           ;;
         --scp)
           uses_scp=true
           continue
           ;;
+        --tar)
+          uses_scp=false
+          continue
+          ;;
         */?*)
-          uses_scp=true
+          prefers_scp=true
           ;;
         *)
-          [ -L "$arg" ] && uses_scp=true
+          [ -L "$arg" ] && prefers_scp=true
           ;;
       esac
     fi
     set -- "$@" "$arg"
   done
+  [ -n "$uses_scp" ] || uses_scp=$prefers_scp
 
   case $comm in
     put)
