@@ -82,8 +82,7 @@ init_env() {
     exit 1
   fi
 
-  pv=pv
-  command -v $pv >/dev/null 2>&1 || pv=cat
+  pv=$(or "$PV" cat)
 }
 
 or() {
