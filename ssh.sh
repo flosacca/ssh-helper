@@ -3,55 +3,65 @@ set -e
 
 script_dir=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 base_dir=$script_dir
-server_dir=$base_dir/auth
+profile_dir=$base_dir/auth
 
-set_server() {
-  [ -f "$server_dir/$1.sh" ] || return 1
-  . "$server_dir/$1.sh"
+resolve() {
+  if grep -qE '(^|/)\.{,2}(/|$)' <<< $1; then
+    return
+  fi
+  if [ -f "$profile_dir/alias/$1" ]; then
+    resolve "$(< "$profile_dir/alias/$1")"
+    return
+  fi
+  if [ -f "$profile_dir/$1.sh" ]; then
+    echo "$1"
+  fi
 }
 
-show_current() {
-  cat "$server_dir/current" 2>/dev/null
+show() {
+  cat "$profile_dir/current" 2>/dev/null
+}
+
+load() {
+  local id="$(resolve "$(or "$1" "$(show)")")"
+  [ -n "$id" ] && . "$profile_dir/$id.sh"
+}
+
+save() {
+  local id="$(resolve "$1")"
+  if [ -n "$id" ]; then
+    echo "$id" > "$profile_dir/current"
+  fi
 }
 
 process_meta() {
   case $1 in
     ls)
-      find "$server_dir" -name '*.sh' ! -type l |
-        xargs -d'\n' basename -s .sh |
-        awk '{ print "'"$(show_current)"'" == $0 ? "*" : " ", $0 }'
+      find "$profile_dir" -name '*.sh' -printf '%P\n' |
+        awk -v s="$(show)" '{
+          sub(/\.sh$/, "")
+          sub(/^/, ($0 == s ? "*" : " ") " ")
+        } 1'
       ;;
     set)
       shift
-      if set_server "$1"; then
-        basename "$(realpath "$server_dir/$1.sh")" .sh > "$server_dir/current"
-      fi
-      ;&
+      save "$1"
+      show
+      ;;
     i)
-      show_current
+      show
       ;;
     *)
       return 1
   esac
 }
 
-or() {
-  local s
-  for s; do
-    if [ -n "$s" ]; then
-      echo "$s"
-      return 0
-    fi
-  done
-  return 1
-}
-
 init_env() {
   auth=$AUTH
   port=$PORT
 
-  if ! set_server "$(show_current)"; then
-    echo 'cannot find config of current server'
+  if ! load; then
+    echo 'cannot find current profile'
     exit 1
   fi
 
@@ -74,6 +84,17 @@ init_env() {
 
   pv=pv
   command -v $pv >/dev/null 2>&1 || pv=cat
+}
+
+or() {
+  local s
+  for s; do
+    if [ -n "$s" ]; then
+      echo "$s"
+      return 0
+    fi
+  done
+  return 1
 }
 
 main() {
