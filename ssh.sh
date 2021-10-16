@@ -71,10 +71,11 @@ init_env() {
   scp=$(or "$SCP" scp)
   ssh_login=$(or "$SSH_LOGIN" "$ssh -t")
 
-  if [ -n "$SSHPASS" ]; then
-    ssh='sshpass -e ssh'
-    scp='sshpass -e scp'
+  if [ -z "$NOPASS" ] && [ -n "$SSHPASS" ]; then
     export SSHPASS
+    ssh="sshpass -e $ssh"
+    scp="sshpass -e $scp"
+    ssh_login="sshpass -e $ssh_login"
   fi
 
   if [ -z "$auth" ]; then
