@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-script_dir=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
+script_dir=$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")
 base_dir=$script_dir
 profile_dir=$base_dir/auth
 
 resolve() {
-  if grep -qE '(^|/)\.{,2}(/|$)' <<< $1; then
+  if puts "$1" | grep -qE '(^|/)\.{,2}(/|$)'; then
     return
   fi
   if [ -f "$profile_dir/alias/$1" ]; then
@@ -14,12 +14,12 @@ resolve() {
     return
   fi
   if [ -f "$profile_dir/$1.sh" ]; then
-    echo "$1"
+    puts "$1"
   fi
 }
 
 show() {
-  cat "$profile_dir/current" 2>/dev/null
+  cat -- "$profile_dir/current" 2>/dev/null
 }
 
 load() {
@@ -30,7 +30,7 @@ load() {
 save() {
   local id="$(resolve "$1")"
   if [ -n "$id" ]; then
-    echo "$id" > "$profile_dir/current"
+    puts "$id" > "$profile_dir/current"
   fi
 }
 
@@ -61,7 +61,7 @@ init_env() {
   port=$PORT
 
   if ! load; then
-    echo 'cannot find current profile'
+    puts 'cannot find current profile'
     exit 1
   fi
 
@@ -79,18 +79,22 @@ init_env() {
   fi
 
   if [ -z "$auth" ]; then
-    echo 'hostname not supplied'
+    puts 'hostname not supplied'
     exit 1
   fi
 
   pv=$(or "$PV" cat)
 }
 
+puts() {
+  printf '%s\n' "$@"
+}
+
 or() {
   local s
   for s; do
     if [ -n "$s" ]; then
-      echo "$s"
+      puts "$s"
       return 0
     fi
   done
@@ -98,8 +102,8 @@ or() {
 }
 
 main() {
-  if [ $# -eq 0 ] || [ "$1" = a ]; then
-    $ssh_login -p $port $auth -- tmux -u "$@"
+  if [ "$#" -eq 0 ] || [ "$1" = a ]; then
+    $ssh_login -p "$port" "$auth" -- tmux -u "$@"
     exit
   fi
 
@@ -108,8 +112,8 @@ main() {
   local uses_scp prefers_scp=false parsing=true arg
   for arg; do
     shift
-    if $parsing; then
-      case $arg in
+    if "$parsing"; then
+      case "$arg" in
         --)
           parsing=false
           ;;
@@ -135,32 +139,33 @@ main() {
 
   case $comm in
     put)
-      if $uses_scp; then
-        $scp -r -p "$@" scp://$auth:$port/
+      if "$uses_scp"; then
+        $scp -r -p "$@" "scp://$auth:$port/"
       else
-        tar zc "$@" | $pv | $ssh -p $port $auth -- tar zx --no-same-owner
+        tar zc "$@" | $pv | $ssh -p "$port" "$auth" -- tar zx --no-same-owner
       fi
       ;;
     get)
-      if $uses_scp; then
+      if "$uses_scp"; then
         eval "set -- $(printf "scp://$auth:$port/%q\0" "$@" | xargs -0 printf '%q ')"
         $scp -r -p "$@" .
       else
-        $ssh -p $port $auth -- "$(printf '%q ' tar zc "$@")" | $pv | tar zx
+        $ssh -p "$port" "$auth" -- "$(printf '%q ' tar zc "$@")" | $pv | tar zx
       fi
       ;;
     init)
-      < "$base_dir/config/pack.tar.xz" $pv | $ssh -p $port $auth -- tar Jx --no-same-owner
+      < "$base_dir/config/pack.tar.xz" $pv | $ssh -p "$port" "$auth" -- tar Jx --no-same-owner
       ;;
     e)
-      $ssh -p $port $auth "$@"
+      $ssh -p "$port" "$auth" "$@"
       ;;
     *)
-      echo "unrecognized command \`$comm\`"
+      puts "unrecognized command \`$comm\`"
       exit 1
   esac
 }
 
+IFS=' '
 process_meta "$@" && exit
 init_env
 main "$@"
