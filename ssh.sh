@@ -6,7 +6,7 @@ base_dir=$script_dir
 profile_dir=$base_dir/auth
 
 resolve() {
-  if puts "$1" | grep -qE '(^|/)\.{,2}(/|$)'; then
+  if match "$1" '(^|/)\.{,2}(/|$)'; then
     return
   fi
   if [ -f "$profile_dir/alias/$1" ]; then
@@ -35,6 +35,9 @@ save() {
 }
 
 process_meta() {
+  if match "$1" '^[0-9]+$'; then
+    set -- set "$@"
+  fi
   case $1 in
     ls)
       find "$profile_dir" -name '*.sh' -printf '%P\n' |
@@ -88,6 +91,10 @@ init_env() {
 
 puts() {
   printf '%s\n' "$@"
+}
+
+match() {
+  awk 'BEGIN { exit ARGV[1] !~ ARGV[2] }' "$@"
 }
 
 or() {
