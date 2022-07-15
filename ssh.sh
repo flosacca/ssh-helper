@@ -3,14 +3,14 @@ set -e
 
 script_dir=$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")
 base_dir=$script_dir
-profile_dir=$base_dir/auth
+profile_dir=$base_dir/auth/profiles
 
 resolve() {
   if match "$1" '(^|/)\.{,2}(/|$)'; then
     return
   fi
-  if [ -f "$profile_dir/alias/$1" ]; then
-    resolve "$(< "$profile_dir/alias/$1")"
+  if [ -f "$profile_dir/../alias/$1" ]; then
+    resolve "$(< "$profile_dir/../alias/$1")"
     return
   fi
   if [ -f "$profile_dir/$1.sh" ]; then
@@ -19,7 +19,7 @@ resolve() {
 }
 
 show() {
-  cat -- "$profile_dir/current" 2>/dev/null
+  cat -- "$profile_dir/../current" 2>/dev/null
 }
 
 load() {
@@ -30,12 +30,12 @@ load() {
 save() {
   local id="$(resolve "$1")"
   if [ -n "$id" ]; then
-    puts "$id" > "$profile_dir/current"
+    puts "$id" > "$profile_dir/../current"
   fi
 }
 
 process_meta() {
-  if match "$1" '^[0-9]+$'; then
+  if match "$1" '^[0-9]'; then
     set -- set "$@"
   fi
   case $1 in
