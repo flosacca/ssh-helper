@@ -22,9 +22,17 @@ show() {
   cat -- "$profile_dir/../current" 2>/dev/null
 }
 
-load() {
+with() {
   local id="$(resolve "$(or "$1" "$(show)")")"
-  [ -n "$id" ] && . "$profile_dir/$id.sh"
+  [ -n "$id" ] && "$2" "$profile_dir/$id.sh"
+}
+
+load() {
+  with "$1" .
+}
+
+detail() {
+  with "$1" cat
 }
 
 save() {
@@ -36,7 +44,7 @@ save() {
 
 process_meta() {
   if match "$1" '^[0-9]'; then
-    set -- set "$@"
+    set -- use "$@"
   fi
   case $1 in
     ls)
@@ -46,13 +54,20 @@ process_meta() {
           sub(/^/, ($0 == s ? "*" : " ") " ")
         } 1'
       ;;
-    set|use)
+    use)
       shift
       save "$1"
       show
       ;;
     i)
       show
+      ;;
+    d)
+      detail
+      ;;
+    host)
+      load
+      puts "$AUTH" | cut -d@ -f2
       ;;
     *)
       return 1
@@ -63,7 +78,7 @@ init_env() {
   auth=$AUTH
   port=$PORT
 
-  if ! load; then
+  if ! load "$1"; then
     puts 'cannot find current profile'
     exit 1
   fi
@@ -109,18 +124,31 @@ or() {
 }
 
 main() {
+  local profile=
+  case $1 in
+    run)
+      save "$2"
+      ;&
+    once)
+      profile=$2
+      shift 2
+      ;;
+  esac
+
+  init_env "$profile"
+
   if [ "$#" -eq 0 ] || [ "$1" = a ]; then
     local ssh_args=("$auth" -- tmux -u "$@")
-    if match "$ssh_login" '^ssh\>'; then
+    if match "$ssh_login" '\<ssh\>'; then
       ssh_args=(-p "$port" "${ssh_args[@]}")
     fi
     $ssh_login "${ssh_args[@]}"
     exit
   fi
 
-  local comm=$1
+  local comm="$1"
   shift
-  local uses_scp prefers_scp=false parsing=true arg
+  local uses_scp prefers_scp=false tar_flags parsing=true arg
   for arg; do
     shift
     if "$parsing"; then
@@ -134,6 +162,10 @@ main() {
           ;;
         --tar)
           uses_scp=false
+          continue
+          ;;
+        --deref)
+          tar_flags="$tar_flags"h
           continue
           ;;
         */?*)
@@ -153,7 +185,7 @@ main() {
       if "$uses_scp"; then
         $scp -r -p "$@" "scp://$auth:$port/"
       else
-        tar zc "$@" | $pv | $ssh -p "$port" "$auth" -- tar zx --no-same-owner
+        tar "$tar_flags"zc "$@" | $pv | $ssh -p "$port" "$auth" -- tar zx --no-same-owner
       fi
       ;;
     get)
@@ -178,5 +210,4 @@ main() {
 
 IFS=' '
 process_meta "$@" && exit
-init_env
 main "$@"
