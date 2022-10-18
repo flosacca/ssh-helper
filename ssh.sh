@@ -23,7 +23,7 @@ show() {
 }
 
 with() {
-  local id="$(resolve "$(or "$1" "$(show)")")"
+  local id="$(resolve "${1:-$(show)}")"
   [ -n "$id" ] && "$2" "$profile_dir/$id.sh"
 }
 
@@ -83,11 +83,11 @@ init_env() {
     exit 1
   fi
 
-  auth=$(or "$auth" "$AUTH")
-  port=$(or "$port" "$PORT" 22)
-  ssh=$(or "$SSH" ssh)
-  scp=$(or "$SCP" scp)
-  ssh_login=$(or "$SSH_LOGIN" "$ssh -t")
+  auth=${auth:-$AUTH}
+  port=${port:-${PORT:-22}}
+  ssh=${SSH:-ssh}
+  scp=${SCP:-scp}
+  ssh_login=${SSH_LOGIN:-$ssh -t}
 
   if [ -z "$NOPASS" ] && [ -n "$SSHPASS" ]; then
     export SSHPASS
@@ -101,7 +101,7 @@ init_env() {
     exit 1
   fi
 
-  pv=$(or "$PV" cat)
+  pv=${PV:-cat}
 }
 
 puts() {
@@ -110,17 +110,6 @@ puts() {
 
 match() {
   awk 'BEGIN { exit ARGV[1] !~ ARGV[2] }' "$@"
-}
-
-or() {
-  local s
-  for s; do
-    if [ -n "$s" ]; then
-      puts "$s"
-      return 0
-    fi
-  done
-  return 1
 }
 
 main() {
@@ -152,7 +141,7 @@ main() {
   for arg; do
     shift
     if "$parsing"; then
-      case "$arg" in
+      case $arg in
         --)
           parsing=false
           ;;
