@@ -126,10 +126,10 @@ or() {
 main() {
   local profile=
   case $1 in
-    run)
+    r|run)
       save "$2"
       ;&
-    once)
+    o|once)
       profile=$2
       shift 2
       ;;
