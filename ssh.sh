@@ -172,6 +172,7 @@ main() {
         $scp -r -p "$@" "scp://$auth:$port/"
       else
         tar "$tar_flags"zc "$@" | $pv | $ssh -p "$port" "$auth" -- tar zx --no-same-owner
+        [ "${PIPESTATUS[*]}" = '0 0 0' ] || return 1
       fi
       ;;
     get)
@@ -190,7 +191,7 @@ main() {
       ;;
     *)
       puts "unrecognized command \`$comm\`"
-      exit 1
+      return 1
   esac
 }
 
