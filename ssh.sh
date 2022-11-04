@@ -43,9 +43,6 @@ save() {
 }
 
 process_meta() {
-  if match "$1" '^[0-9]'; then
-    set -- use "$@"
-  fi
   case $1 in
     ls)
       find "$profile_dir" -name '*.sh' -printf '%P\n' |
@@ -198,5 +195,9 @@ main() {
 }
 
 IFS=' '
-process_meta "$@" && exit
+if match "$1" '^[0-9]'; then
+  set -- once "$@"
+else
+  process_meta "$@" && exit
+fi
 main "$@"
