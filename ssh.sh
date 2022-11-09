@@ -164,13 +164,17 @@ main() {
     fi
     set -- "$@" "$arg"
   done
-  [ -n "$uses_scp" ] || uses_scp=$prefers_scp
+  if [ -z "$uses_scp" ]; then
+    uses_scp=$prefers_scp
+    [ "$#" = 1 ] && uses_scp=false
+  fi
 
   case $comm in
     put)
       if "$uses_scp"; then
         $scp -r -p "$@" "scp://$auth:$port/"
       else
+        [ "$#" = 1 ] && set -- -C "$(dirname -- "$1")" "$(basename -- "$1")"
         tar "$tar_flags"zc "$@" | $pv | $ssh -p "$port" "$auth" -- tar zx --no-same-owner
         [ "${PIPESTATUS[*]}" = '0 0 0' ] || return 1
       fi
@@ -180,7 +184,8 @@ main() {
         eval "set -- $(printf "scp://$auth:$port/%q\0" "$@" | xargs -0 printf '%q ')"
         $scp -r -p "$@" .
       else
-        $ssh -p "$port" "$auth" -- "$(printf '%q ' tar zc "$@")" | $pv | tar zx
+        [ "$#" = 1 ] && set -- -C "$(dirname -- "$1")" "$(basename -- "$1")"
+        $ssh -p "$port" "$auth" -- "tar zc $(printf '%q ' "$@")" | $pv | tar zx
       fi
       ;;
     init)
