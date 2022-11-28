@@ -132,9 +132,13 @@ main() {
     exit
   fi
 
-  local comm="$1"
+  local comm uses_scp prefers_scp deref owner_flag parsing arg
+  comm=$1
+  prefers_scp=false
+  parsing=true
+  owner_flag=--no-same-owner
+  [ -n "$TAR_NO_OWNER_FLAG" ] && owner_flag=
   shift
-  local uses_scp prefers_scp=false tar_flags parsing=true arg
   for arg; do
     shift
     if "$parsing"; then
@@ -151,7 +155,7 @@ main() {
           continue
           ;;
         --deref)
-          tar_flags="$tar_flags"h
+          deref=h
           continue
           ;;
         */?*)
@@ -175,7 +179,7 @@ main() {
         $scp -r -p "$@" "scp://$auth:$port/"
       else
         [ "$#" = 1 ] && set -- -C "$(dirname -- "$1")" "$(basename -- "$1")"
-        tar "$tar_flags"zc "$@" | $pv | $ssh -p "$port" "$auth" -- tar zx --no-same-owner
+        tar ${deref}zc "$@" | $pv | $ssh -p "$port" "$auth" -- tar zx $owner_flag
         [ "${PIPESTATUS[*]}" = '0 0 0' ] || return 1
       fi
       ;;
@@ -189,7 +193,7 @@ main() {
       fi
       ;;
     init)
-      < "$base_dir/config/pack.tar.xz" $pv | $ssh -p "$port" "$auth" -- tar Jx --no-same-owner
+      < "$base_dir/config/pack.tar.xz" $pv | $ssh -p "$port" "$auth" -- tar Jx $owner_flag
       ;;
     e)
       $ssh -p "$port" "$auth" "$@"
