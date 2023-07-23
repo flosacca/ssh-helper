@@ -125,10 +125,10 @@ main() {
 
   if [ "$#" -eq 0 ] || [ "$1" = a ]; then
     local ssh_args=("$auth" -- tmux -u "$@")
-    if match "$ssh_login" '\<ssh\>'; then
+    if match "$ssh_login" '\<ssh$'; then
       ssh_args=(-p "$port" "${ssh_args[@]}")
     fi
-    $ssh_login "${ssh_args[@]}"
+    eval "$ssh_login \"\${ssh_args[@]}\""
     exit
   fi
 
