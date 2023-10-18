@@ -84,13 +84,17 @@ init_env() {
   port=${port:-${PORT:-22}}
   ssh=${SSH:-ssh}
   scp=${SCP:-scp}
-  ssh_login=${SSH_LOGIN:-$ssh -t}
+  if [ -n "$ssh_login" ]; then
+    ssh_login=("${ssh_login[@]}")
+  else
+    ssh_login=("$ssh" -t)
+  fi
 
   if [ -z "$NOPASS" ] && [ -n "$SSHPASS" ]; then
     export SSHPASS
     ssh="sshpass -e $ssh"
     scp="sshpass -e $scp"
-    ssh_login="sshpass -e $ssh_login"
+    ssh_login=(sshpass -e "${ssh_login[@]}")
   fi
 
   if [ -z "$auth" ]; then
@@ -124,14 +128,10 @@ main() {
   init_env "$profile"
 
   if [ "$#" -eq 0 ] || [ "$1" = a ]; then
-    if [ -z "$SSH_LOGIN_NO_TMUX" ]; then
-      set -- tmux -u "$@"
-    fi
+    [ -n "$SSH_LOGIN_NO_TMUX" ] || set -- tmux -u "$@"
     set -- "$auth" -- "$@"
-    if match "$ssh_login" '\<ssh$'; then
-      set -- -p "$port" "$@"
-    fi
-    eval "$ssh_login \"\$@\""
+    [ -n "$SSH_LOGIN_NO_PORT" ] || set -- -p "$port" "$@"
+    "${ssh_login[@]}" "$@"
     exit
   fi
 
