@@ -124,11 +124,14 @@ main() {
   init_env "$profile"
 
   if [ "$#" -eq 0 ] || [ "$1" = a ]; then
-    local ssh_args=("$auth" -- tmux -u "$@")
-    if match "$ssh_login" '\<ssh$'; then
-      ssh_args=(-p "$port" "${ssh_args[@]}")
+    if [ -z "$SSH_LOGIN_NO_TMUX" ]; then
+      set -- tmux -u "$@"
     fi
-    eval "$ssh_login \"\${ssh_args[@]}\""
+    set -- "$auth" -- "$@"
+    if match "$ssh_login" '\<ssh$'; then
+      set -- -p "$port" "$@"
+    fi
+    eval "$ssh_login \"\$@\""
     exit
   fi
 
