@@ -5,48 +5,44 @@ script_dir=$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")
 base_dir=$script_dir
 profile_dir=$base_dir/auth/profiles
 alias_dir=$base_dir/auth/alias
+link_file=$base_dir/auth/current
+
+link=
+profile=
+profile_file=
+
+check_name() {
+  if match "$1" '(^|/)\.{,2}(/|$)'; then
+    panic "illegal name \`$1\`"
+  fi
+}
 
 resolve() {
-  if match "$1" '(^|/)\.{,2}(/|$)'; then
-    return
-  fi
+  check_name "$1"
   if [ -f "$alias_dir/$1" ]; then
-    resolve "$(< "$alias_dir/$1")"
-    return
+    resolve "$(cat "$alias_dir/$1")"
+  elif [ -f "$profile_dir/$1.sh" ]; then
+    profile=$1
+    profile_file=$profile_dir/$1.sh
+  else
+    panic "no such profile \`$1\`"
   fi
-  if [ -f "$profile_dir/$1.sh" ]; then
-    puts "$1"
-  fi
 }
 
-show() {
-  cat -- "$profile_dir/../current" 2>/dev/null
+get_link() {
+  link=$(cat -- "$link_file" 2>/dev/null)
+  [ -n "$link" ] || panic 'profile is not set'
 }
 
-with() {
-  local id="$(resolve "${1:-$(show)}")"
-  [ -n "$id" ] && "$2" "$profile_dir/$id.sh"
-}
-
-load() {
-  with "$1" .
-}
-
-detail() {
-  with "$1" cat
-}
-
-save() {
-  local id="$(resolve "$1")"
-  if [ -n "$id" ]; then
-    puts "$id" > "$profile_dir/../current"
-  fi
+save_link() {
+  [ -n "$profile" ] || panic 'nothing to save'
+  puts "$profile" > "$link_file"
 }
 
 process_alias() {
   case $# in
     0)
-      find "$alias_dir" ! -type d -exec awk -v "id=$(show)" '
+      find "$alias_dir" ! -type d -exec awk -v "k=$link" '
         FNR == 1 {
           f = FILENAME
           sub(".*/", "", f)
@@ -57,18 +53,19 @@ process_alias() {
         }
         END {
           for (i = 1; i <= n; ++i) {
-            printf "%s %-" w "s -> %s\n", t[i] == id ? "*" : " ", a[i], t[i]
+            printf "%s %-" w "s -> %s\n", t[i] == k ? "*" : " ", a[i], t[i]
           }
         }
       ' {} +
       ;;
     1)
+      check_name "$1"
       if [ ! -f "$alias_dir/$1" ]; then
         panic "no such alias \`$1\`"
       fi
       (
-        id=$(resolve "$1")
-        [ -n "$id" ] && puts "$id"
+        resolve "$1" 2>/dev/null
+        puts "$profile"
       ) || panic "broken alias \`$1\`"
       ;;
     2)
@@ -77,10 +74,9 @@ process_alias() {
       fi
       if [ "$2" = - ]; then
         rm -f "$alias_dir/$1"
-      elif [ -n "$(resolve "$2")" ]; then
-        puts "$2" > $alias_dir/$1
       else
-        panic "invalid target \`$2\`"
+        resolve "$2"
+        puts "$2" > $alias_dir/$1
       fi
       ;;
     *)
@@ -91,29 +87,37 @@ process_alias() {
 process_meta() {
   case $1 in
     ls)
+      get_link
       find "$profile_dir" -name '*.sh' -printf '%P\n' |
-        awk -v "id=$(show)" '{
+        awk -v "k=$link" '{
           sub(/\.sh$/, "")
-          sub(/^/, ($0 == id ? "*" : " ") " ")
+          sub(/^/, ($0 == k ? "*" : " ") " ")
         } 1'
       ;;
     alias)
+      get_link
       shift
       process_alias "$@"
       ;;
     use)
-      shift
-      save "$1"
-      show
+      resolve "$2"
+      save_link
+      get_link
+      puts "$link"
       ;;
     i)
-      show
+      get_link
+      puts "$link"
       ;;
     d)
-      detail
+      get_link
+      resolve "$link"
+      cat -- "$profile_file"
       ;;
     host)
-      load
+      get_link
+      resolve "$link"
+      . -- "$profile_file"
       puts "$AUTH" | cut -d@ -f2
       ;;
     *)
@@ -125,9 +129,7 @@ init_env() {
   auth=$AUTH
   port=$PORT
 
-  if ! load "$1"; then
-    panic 'cannot find current profile'
-  fi
+  . -- "$profile_file"
 
   auth=${auth:-$AUTH}
   port=${port:-${PORT:-22}}
@@ -167,18 +169,23 @@ match() {
 }
 
 main() {
-  local profile=
   case $1 in
-    r|run)
-      save "$2"
-      ;&
     o|once)
-      profile=$2
+      resolve "$2"
       shift 2
+      ;;
+    r|run)
+      resolve "$2"
+      shift 2
+      save_link
+      ;;
+    *)
+      get_link
+      resolve "$link"
       ;;
   esac
 
-  init_env "$profile"
+  init_env
 
   if [ "$#" -eq 0 ] || [ "$1" = a ]; then
     [ -n "$SSH_LOGIN_NO_TMUX" ] || set -- tmux -u "$@"
