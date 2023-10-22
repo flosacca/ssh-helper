@@ -1,15 +1,19 @@
 #!/bin/bash
 set -e
+IFS=' '
 
-script_dir=$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")
-base_dir=$script_dir
-profile_dir=$base_dir/auth/profiles
-alias_dir=$base_dir/auth/alias
-link_file=$base_dir/auth/current
+match() {
+  awk 'BEGIN { exit ARGV[1] !~ ARGV[2] }' "$@"
+}
 
-link=
-profile=
-profile_file=
+puts() {
+  printf '%s\n' "$@"
+}
+
+panic() {
+  puts "$@" >&2
+  exit 1
+}
 
 check_name() {
   if match "$1" '(^|/)\.{,2}(/|$)'; then
@@ -37,6 +41,47 @@ get_link() {
 save_link() {
   [ -n "$profile" ] || panic 'nothing to save'
   puts "$profile" > "$link_file"
+}
+
+process_meta() {
+  case $1 in
+    ls)
+      get_link
+      find "$profile_dir" -name '*.sh' -printf '%P\n' |
+        awk -v "k=$link" '{
+          sub(/\.sh$/, "")
+          sub(/^/, ($0 == k ? "*" : " ") " ")
+        } 1'
+      ;;
+    alias)
+      get_link
+      shift
+      process_alias "$@"
+      ;;
+    use)
+      resolve "$2"
+      save_link
+      get_link
+      puts "$link"
+      ;;
+    i)
+      get_link
+      puts "$link"
+      ;;
+    d)
+      get_link
+      resolve "$link"
+      cat -- "$profile_file"
+      ;;
+    host)
+      get_link
+      resolve "$link"
+      . -- "$profile_file"
+      puts "$AUTH" | cut -d@ -f2
+      ;;
+    *)
+      return 1
+  esac
 }
 
 process_alias() {
@@ -84,46 +129,28 @@ process_alias() {
   esac
 }
 
-process_meta() {
-  case $1 in
-    ls)
-      get_link
-      find "$profile_dir" -name '*.sh' -printf '%P\n' |
-        awk -v "k=$link" '{
-          sub(/\.sh$/, "")
-          sub(/^/, ($0 == k ? "*" : " ") " ")
-        } 1'
-      ;;
-    alias)
-      get_link
-      shift
-      process_alias "$@"
-      ;;
-    use)
-      resolve "$2"
-      save_link
-      get_link
-      puts "$link"
-      ;;
-    i)
-      get_link
-      puts "$link"
-      ;;
-    d)
-      get_link
-      resolve "$link"
-      cat -- "$profile_file"
-      ;;
-    host)
-      get_link
-      resolve "$link"
-      . -- "$profile_file"
-      puts "$AUTH" | cut -d@ -f2
-      ;;
-    *)
-      return 1
-  esac
-}
+script_file=${BASH_SOURCE:-$0}
+[ -e "$script_file" ] || panic "bad name \`$script_file\`"
+script_dir=$(
+  path=$(realpath -- "$script_file")
+  puts "${path%/*}"
+)
+[ -d "$script_dir" ] || panic "bad directory \`$script_dir\`"
+
+base_dir=$script_dir
+profile_dir=$base_dir/auth/profiles
+alias_dir=$base_dir/auth/alias
+link_file=$base_dir/auth/current
+
+link=
+profile=
+profile_file=
+
+if match "$1" '^[0-9]'; then
+  set -- once "$@"
+elif process_meta "$@"; then
+  exit
+fi
 
 init_env() {
   auth=$AUTH
@@ -153,19 +180,6 @@ init_env() {
   fi
 
   pv=${PV:-cat}
-}
-
-puts() {
-  printf '%s\n' "$@"
-}
-
-panic() {
-  puts "$@" >&2
-  exit 1
-}
-
-match() {
-  awk 'BEGIN { exit ARGV[1] !~ ARGV[2] }' "$@"
 }
 
 main() {
@@ -266,10 +280,4 @@ main() {
   esac
 }
 
-IFS=' '
-if match "$1" '^[0-9]'; then
-  set -- once "$@"
-else
-  process_meta "$@" && exit
-fi
 main "$@"
