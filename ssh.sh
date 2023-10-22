@@ -4,13 +4,14 @@ set -e
 script_dir=$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")
 base_dir=$script_dir
 profile_dir=$base_dir/auth/profiles
+alias_dir=$base_dir/auth/alias
 
 resolve() {
   if match "$1" '(^|/)\.{,2}(/|$)'; then
     return
   fi
-  if [ -f "$profile_dir/../alias/$1" ]; then
-    resolve "$(< "$profile_dir/../alias/$1")"
+  if [ -f "$alias_dir/$1" ]; then
+    resolve "$(< "$alias_dir/$1")"
     return
   fi
   if [ -f "$profile_dir/$1.sh" ]; then
@@ -42,14 +43,63 @@ save() {
   fi
 }
 
+process_alias() {
+  case $# in
+    0)
+      find "$alias_dir" ! -type d -exec awk -v "id=$(show)" '
+        FNR == 1 {
+          f = FILENAME
+          sub(".*/", "", f)
+          l = length(f)
+          w = l > w ? l : w
+          a[++n] = f
+          t[n] = $0
+        }
+        END {
+          for (i = 1; i <= n; ++i) {
+            printf "%s %-" w "s -> %s\n", t[i] == id ? "*" : " ", a[i], t[i]
+          }
+        }
+      ' {} +
+      ;;
+    1)
+      if [ ! -f "$alias_dir/$1" ]; then
+        panic "no such alias \`$1\`"
+      fi
+      (
+        id=$(resolve "$1")
+        [ -n "$id" ] && puts "$id"
+      ) || panic "broken alias \`$1\`"
+      ;;
+    2)
+      if ! match "$1" '^[[:alnum:]_-]+$'; then
+        panic "invalid alias name \`$1\`"
+      fi
+      if [ "$2" = - ]; then
+        rm -f "$alias_dir/$1"
+      elif [ -n "$(resolve "$2")" ]; then
+        puts "$2" > $alias_dir/$1
+      else
+        panic "invalid target \`$2\`"
+      fi
+      ;;
+    *)
+      panic "usage: ${0##*/} alias [<name> [<target>|-]]"
+  esac
+}
+
 process_meta() {
   case $1 in
     ls)
       find "$profile_dir" -name '*.sh' -printf '%P\n' |
-        awk -v s="$(show)" '{
+        awk -v "id=$(show)" '{
           sub(/\.sh$/, "")
-          sub(/^/, ($0 == s ? "*" : " ") " ")
+          sub(/^/, ($0 == id ? "*" : " ") " ")
         } 1'
+      ;;
+    alias)
+      shift
+      process_alias "$@"
       ;;
     use)
       shift
@@ -76,8 +126,7 @@ init_env() {
   port=$PORT
 
   if ! load "$1"; then
-    puts 'cannot find current profile'
-    exit 1
+    panic 'cannot find current profile'
   fi
 
   auth=${auth:-$AUTH}
@@ -98,8 +147,7 @@ init_env() {
   fi
 
   if [ -z "$auth" ]; then
-    puts 'hostname not supplied'
-    exit 1
+    panic 'hostname not supplied'
   fi
 
   pv=${PV:-cat}
@@ -107,6 +155,11 @@ init_env() {
 
 puts() {
   printf '%s\n' "$@"
+}
+
+panic() {
+  puts "$@" >&2
+  exit 1
 }
 
 match() {
@@ -202,8 +255,7 @@ main() {
       $ssh -p "$port" "$auth" "$@"
       ;;
     *)
-      puts "unrecognized command \`$comm\`"
-      return 1
+      panic "unrecognized command \`$comm\`"
   esac
 }
 
