@@ -1,5 +1,13 @@
 #!/bin/bash
+# This script should *essentially* be POSIX-compliant (could be run with
+# `/bin/sh`), with the only exception being the use of `set -o pipefail`, which
+# is not available in POSIX as of 2017. Not setting this option would still
+# allow the script to work, but it may exit with 0 even in the case of certain
+# errors.
+
 set -e
+set -u
+(set -o pipefail 2>/dev/null) && set -o pipefail
 IFS=' '
 
 match() {
@@ -11,7 +19,7 @@ puts() {
 }
 
 panic() {
-  puts "$@" >&2
+  [ "$#" = 0 ] || puts "$@" >&2
   exit 1
 }
 
@@ -43,8 +51,12 @@ save_link() {
   puts "$profile" > "$link_file"
 }
 
+usage() {
+  panic "usage: ${script_file##*/} $1"
+}
+
 process_meta() {
-  case $1 in
+  case ${1-} in
     ls)
       get_link
       find "$profile_dir" -name '*.sh' -printf '%P\n' |
@@ -59,6 +71,7 @@ process_meta() {
       process_alias "$@"
       ;;
     use)
+      [ "$#" = 2 ] || usage 'use <profile>'
       resolve "$2"
       save_link
       get_link
@@ -77,11 +90,12 @@ process_meta() {
       get_link
       resolve "$link"
       . -- "$profile_file"
-      puts "$AUTH" | cut -d@ -f2
+      puts "${AUTH#*@}"
       ;;
     *)
-      return 1
+      return 0
   esac
+  exit
 }
 
 process_alias() {
@@ -114,7 +128,7 @@ process_alias() {
       ) || panic "broken alias \`$1\`"
       ;;
     2)
-      if ! match "$1" '^[[:alnum:]_-]+$'; then
+      if match "$1" '[^A-Za-z0-9_-]|^-|-$'; then
         panic "invalid alias name \`$1\`"
       fi
       if [ "$2" = - ]; then
@@ -125,7 +139,7 @@ process_alias() {
       fi
       ;;
     *)
-      panic "usage: ${0##*/} alias [<name> [<target>|-]]"
+      usage "alias [<name> [<target>|-]]"
   esac
 }
 
@@ -146,44 +160,57 @@ link=
 profile=
 profile_file=
 
-if match "$1" '^[0-9]'; then
-  set -- once "$@"
-elif process_meta "$@"; then
-  exit
-fi
+process_meta "$@"
+
+next() {
+  [ -z "${callback-}" ] || set -- "$callback" "$@"
+  "$@"
+}
+
+ssh_login() {
+  next ssh -t "$@"
+}
 
 init_env() {
-  auth=$AUTH
-  port=$PORT
+  auth=${AUTH-}
+  port=${PORT-}
+  [ -z "${SSHPASS+.}" ] || sshpass=$SSHPASS
 
   . -- "$profile_file"
 
-  auth=${auth:-$AUTH}
+  auth=${auth:-${AUTH-}}
+  [ -n "$auth" ] || panic 'hostname not supplied'
   port=${port:-${PORT:-22}}
-  ssh=${SSH:-ssh}
-  scp=${SCP:-scp}
-  if [ -n "$ssh_login" ]; then
-    ssh_login=("${ssh_login[@]}")
-  else
-    ssh_login=("$ssh" -t)
-  fi
-
-  if [ -z "$NOPASS" ] && [ -n "$SSHPASS" ]; then
-    export SSHPASS
-    ssh="sshpass -e $ssh"
-    scp="sshpass -e $scp"
-    ssh_login=(sshpass -e "${ssh_login[@]}")
-  fi
-
-  if [ -z "$auth" ]; then
-    panic 'hostname not supplied'
-  fi
+  [ -n "${sshpass+.}" ] || sshpass=${SSHPASS-}
 
   pv=${PV:-cat}
 }
 
-main() {
-  case $1 in
+_sshpass() {
+  [ -z "$sshpass" ] || set -- sshpass -p "$sshpass" "$@"
+  "$@"
+}
+
+_scp() {
+  _sshpass scp "$@"
+}
+
+ssh_e() {
+  _sshpass ssh -p "$port" "$auth" "$@"
+}
+
+ssh_l() {
+  set -- "$auth" "$@"
+  [ -n "${SSH_LOGIN_NO_PORT-}" ] || set -- -p "$port" "$@"
+  callback=_sshpass ssh_login "$@"
+}
+
+{
+  case ${1-} in
+    [0-9]*) set -- o "$@";;
+  esac
+
+  case ${1-} in
     o|once)
       resolve "$2"
       shift 2
@@ -201,21 +228,28 @@ main() {
 
   init_env
 
-  if [ "$#" -eq 0 ] || [ "$1" = a ]; then
-    [ -n "$SSH_LOGIN_NO_TMUX" ] || set -- tmux -u "$@"
-    set -- "$auth" -- "$@"
-    [ -n "$SSH_LOGIN_NO_PORT" ] || set -- -p "$port" "$@"
-    "${ssh_login[@]}" "$@"
+  if [ "$#" = 0 ] && [ -n "${SSH_LOGIN_COMMAND+.}" ]; then
+    [ -z "$SSH_LOGIN_COMMAND" ] || set -- -- "$SSH_LOGIN_COMMAND"
+    ssh_l "$@"
     exit
   fi
 
-  local comm uses_scp prefers_scp deref owner_flag parsing arg
+  if [ "$#" = 0 ] || [ "$1" = a ]; then
+    ssh_l -- tmux -u "$@"
+    exit
+  fi
+
   comm=$1
-  prefers_scp=false
-  parsing=true
-  owner_flag=--no-same-owner
-  [ -n "$TAR_NO_OWNER_FLAG" ] && owner_flag=
   shift
+
+  uses_scp=
+  has_dir=false
+  has_symlink=false
+  deref=
+  ssh_tar_x_flags=
+  [ -n "${TAR_NO_OWNER_FLAG-}" ] || ssh_tar_x_flags=--no-same-owner
+
+  parsing=true
   for arg; do
     shift
     if "$parsing"; then
@@ -236,48 +270,68 @@ main() {
           continue
           ;;
         */?*)
-          prefers_scp=true
+          has_dir=true
           ;;
         *)
-          [ -L "$arg" ] && prefers_scp=true
+          [ -L "$arg" ] && has_symlink=true
           ;;
       esac
     fi
     set -- "$@" "$arg"
   done
+
   if [ -z "$uses_scp" ]; then
-    uses_scp=$prefers_scp
-    [ "$#" = 1 ] && uses_scp=false
+    if "$has_symlink"; then
+      uses_scp=true
+    elif [ "$#" = 1 ]; then
+      uses_scp=false
+    else
+      uses_scp=$has_dir
+    fi
   fi
+
+  tar_c_map() {
+    [ "$#" = 1 ] && set -- -C "$(dirname -- "$1")" "$(basename -- "$1")"
+    "$callback" "$@"
+  }
 
   case $comm in
     put)
+      [ "$#" = 0 ] && usage 'put <file>...'
+      for arg; do
+        [ -e "$arg" ] || panic "cannot find \`$arg\`"
+      done
       if "$uses_scp"; then
-        $scp -r -p "$@" "scp://$auth:$port/"
+        _scp -r -p "$@" "scp://$auth:$port/"
       else
-        [ "$#" = 1 ] && set -- -C "$(dirname -- "$1")" "$(basename -- "$1")"
-        tar ${deref}zc "$@" | $pv | $ssh -p "$port" "$auth" -- tar zx $owner_flag
-        [ "${PIPESTATUS[*]}" = '0 0 0' ] || return 1
+        tar_put() {
+          tar "${deref}zc" "$@" | "$pv" | ssh_e -- "tar zx $ssh_tar_x_flags"
+        }
+        callback=tar_put tar_c_map "$@"
       fi
       ;;
     get)
+      [ "$#" = 0 ] && usage 'get <file>...'
       if "$uses_scp"; then
-        eval "set -- $(printf "scp://$auth:$port/%q\0" "$@" | xargs -0 printf '%q ')"
-        $scp -r -p "$@" .
+        for arg; do
+          shift
+          set -- "$@" "$(env printf %q "scp://$auth:$port/$arg")"
+        done
+        _scp -r -p "$@" .
       else
-        [ "$#" = 1 ] && set -- -C "$(dirname -- "$1")" "$(basename -- "$1")"
-        $ssh -p "$port" "$auth" -- "tar zc $(printf '%q ' "$@")" | $pv | tar zx
+        tar_get() {
+          ssh_e -- "tar zc $(env printf '%q ' "$@")" | "$pv" | tar zx
+        }
+        callback=tar_get tar_c_map "$@"
       fi
       ;;
     init)
-      < "$base_dir/config/pack.tar.xz" $pv | $ssh -p "$port" "$auth" -- tar Jx $owner_flag
+      "$pv" < $base_dir/config/pack.tar.xz | ssh_e -- "tar Jx $ssh_tar_x_flags"
       ;;
     e)
-      $ssh -p "$port" "$auth" "$@"
+      ssh_e "$@"
       ;;
     *)
       panic "unrecognized command \`$comm\`"
   esac
 }
-
-main "$@"
