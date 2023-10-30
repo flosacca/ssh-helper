@@ -245,7 +245,7 @@ ssh_l() {
   uses_scp=
   has_dir=false
   has_symlink=false
-  deref=
+  deref=false
   ssh_tar_x_flags=
   [ -n "${TAR_NO_OWNER_FLAG-}" ] || ssh_tar_x_flags=--no-same-owner
 
@@ -266,7 +266,7 @@ ssh_l() {
           continue
           ;;
         --deref)
-          deref=h
+          deref=true
           continue
           ;;
         */?*)
@@ -290,8 +290,9 @@ ssh_l() {
     fi
   fi
 
-  tar_c_map() {
+  tar_c_apply() {
     [ "$#" = 1 ] && set -- -C "$(dirname -- "$1")" "$(basename -- "$1")"
+    "$deref" && set -- -h --hard-dereference "$@"
     "$callback" "$@"
   }
 
@@ -305,9 +306,9 @@ ssh_l() {
         _scp -r -p "$@" "scp://$auth:$port/"
       else
         tar_put() {
-          tar "${deref}zc" "$@" | "$pv" | ssh_e -- "tar zx $ssh_tar_x_flags"
+          tar zc "$@" | "$pv" | ssh_e -- "tar zx $ssh_tar_x_flags"
         }
-        callback=tar_put tar_c_map "$@"
+        callback=tar_put tar_c_apply "$@"
       fi
       ;;
     get)
@@ -322,7 +323,7 @@ ssh_l() {
         tar_get() {
           ssh_e -- "tar zc $(env printf '%q ' "$@")" | "$pv" | tar zx
         }
-        callback=tar_get tar_c_map "$@"
+        callback=tar_get tar_c_apply "$@"
       fi
       ;;
     init)
