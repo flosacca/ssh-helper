@@ -1,9 +1,9 @@
 #!/bin/bash
-# This script should *essentially* be POSIX-compliant (could be run with
-# `/bin/sh`), with the only exception being the use of `set -o pipefail`, which
-# is not available in POSIX as of 2017. Not setting this option would still
-# allow the script to work, but it may exit with 0 even in the case of certain
-# errors.
+# This script should *essentially* be POSIX-compliant (could be run with `/bin/sh`),
+# with the only exception being the use of `set -o pipefail`, which is not available in
+# POSIX as of 2017. Not setting this option would still allow the script to work, but it
+# may exit with 0 even in the case of certain errors.
+# Note that it is not about whether the use of external utilities is POSIX-compliant.
 
 set -e
 set -u
