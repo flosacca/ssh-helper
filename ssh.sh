@@ -187,8 +187,11 @@ init_env() {
 }
 
 _sshpass() {
-  [ -z "$sshpass" ] || set -- sshpass -p "$sshpass" "$@"
-  "$@"
+  if [ -n "$sshpass" ]; then
+    SSHPASS=$sshpass sshpass -e "$@"
+  else
+    "$@"
+  fi
 }
 
 _scp() {
