@@ -135,7 +135,7 @@ process_alias() {
         rm -f "$alias_dir/$1"
       else
         resolve "$2"
-        puts "$2" > $alias_dir/$1
+        puts "$2" > "$alias_dir/$1"
       fi
       ;;
     *)
@@ -330,7 +330,7 @@ ssh_l() {
       fi
       ;;
     init)
-      "$pv" < $base_dir/config/pack.tar.xz | ssh_e -- "tar Jx $ssh_tar_x_flags"
+      "$pv" < "$base_dir/config/pack.tar.xz" | ssh_e -- "tar Jx $ssh_tar_x_flags"
       ;;
     e)
       ssh_e "$@"
